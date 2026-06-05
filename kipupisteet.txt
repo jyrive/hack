@@ -1,0 +1,17 @@
+
+
+workorder
+-droppaa siivous
+-rajaa kiinteistötekniikan
+
+kipupisteet
+huoltomiehen kirjauksen laatu
+kiinteistötekniikka
+ennakoiva huolto!!!! voiko tehtäviä, niputtaa
+Liputuspäivät
+kiinteistökierros (kerran viikossa)
+liukkauden torjunta (ei frekvenssiä)
+scheduled maintenance filessa löytyy tiedot
+onko mahdollista luokitella dataa huoltomiehen ?
+
+Luokitteluesimerkit (avainsanoja): pahvilaatikko (palokuorma), roska, liukas lattia, etc... 
