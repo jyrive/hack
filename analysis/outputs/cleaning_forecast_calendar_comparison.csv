@@ -1,0 +1,4 @@
+model,mae,best_lag_used_days
+naive_7d_rolling,3.6102857142857148,0
+occupancy_linear,3.188304686425018,0
+occupancy_calendar,3.15663328516236,0

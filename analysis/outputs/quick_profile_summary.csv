@@ -1,0 +1,4 @@
+dataset,rows,columns,duplicate_rows,null_cells
+alarms,18702,25,0,30444
+work_orders,44265,33,0,259590
+maintenance_plans,316,22,210,406

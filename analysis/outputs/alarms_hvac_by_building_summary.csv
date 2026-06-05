@@ -1,0 +1,6 @@
+CUSTOMER_NAME,CUSTOMER_SITE_NAME,SITE_ADDRESS,hvac_alarm_events,unique_alert_ids,unique_devices,unique_locations,avg_priority,min_event_time,max_event_time,avg_resolution_hours,p90_resolution_hours,workorders_created
+Valmet Flow Control Oy,Toimistotalo,Vanha Porvoontie 229 01380 Vantaa FINLAND,8640,369,2,10,60.0,2025-01-20 09:21:31,2026-05-21 16:51:13,7.08,2.63,0
+Valmet Flow Control Oy,Venttiilitehdas,Vanha Porvoontie 229 01380 Vantaa FINLAND / Honkanummentie 11,1464,249,2,5,60.0,2025-01-23 08:53:39,2026-05-25 07:42:48,11.15,6.58,0
+Valmet Flow Control Oy,STD tehdas,Vanha Porvoontie 229 01380 Vantaa FINLAND,180,63,1,2,60.0,2025-03-27 08:41:24,2026-05-12 13:10:07,16.98,28.24,0
+Valmet Technologies Oy,Lentokentänkatu 11,Lentokentänkatu 11 33900 Tampere FINLAND,56,2,1,2,60.0,2025-01-21 08:03:47,2025-01-30 11:06:36,2.93,4.02,0
+Valmet Flow Control Oy,Wharehouse,Vanha Porvoontie 229 01380 Vantaa FINLAND,1,1,1,1,13.0,2025-01-26 09:02:43,2025-01-26 09:02:43,0.08,0.08,0
