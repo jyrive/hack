@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { createServerClient } from '@supabase/ssr';
 import { json, type RequestHandler } from '@sveltejs/kit';
+import WebSocket from 'ws';
 
 function normalize(value?: string) {
 	return value?.trim().replace(/^['\"]|['\"]$/g, '');
@@ -42,6 +43,9 @@ export const GET: RequestHandler = async (event) => {
 	try {
 		if (url && key) {
 			createServerClient(url, key, {
+				realtime: {
+					transport: WebSocket
+				},
 				cookies: {
 					getAll: () => event.cookies.getAll(),
 					setAll: () => {

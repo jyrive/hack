@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { createServerClient } from '@supabase/ssr';
 import { isRedirect, redirect, type Handle } from '@sveltejs/kit';
+import WebSocket from 'ws';
 
 const PUBLIC_PATHS = new Set(['/auth/signin', '/auth/callback', '/auth/error', '/auth/debug', '/hello']);
 const PUBLIC_PREFIXES = ['/_app/', '/icons/'];
@@ -58,6 +59,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 		stage = 'client_init';
 		event.locals.supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+			realtime: {
+				transport: WebSocket
+			},
 			cookies: {
 				getAll: () => event.cookies.getAll(),
 				setAll: (
