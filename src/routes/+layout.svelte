@@ -36,6 +36,7 @@
 			};
 		})
 	);
+	const newNotificationCount = $derived(Math.min(predictionNotifications.length, 9));
 
 	onMount(() => {
 		const onOpenBuildingSheet = () => openBuildingSheet();
@@ -141,6 +142,9 @@
 						d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 1 0-14 0v5l-2 2v1h18v-1l-2-2z"
 					/>
 				</svg>
+				{#if newNotificationCount > 0}
+					<span class="icon-badge" aria-hidden="true">{newNotificationCount}</span>
+				{/if}
 			</button>
 		</div>
 
@@ -409,6 +413,7 @@
 
 
 	.icon-button {
+		position: relative;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -425,6 +430,25 @@
 		width: 1.35rem;
 		height: 1.35rem;
 		fill: var(--md3-primary);
+	}
+
+	.icon-badge {
+		position: absolute;
+		top: -0.3rem;
+		right: -0.2rem;
+		min-width: 1.05rem;
+		height: 1.05rem;
+		padding: 0 0.22rem;
+		border-radius: 999px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.67rem;
+		font-weight: 800;
+		line-height: 1;
+		background: #d93025;
+		color: #fff;
+		border: 2px solid #fff;
 	}
 
 	.user-chip {

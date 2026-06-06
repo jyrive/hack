@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
 
 	type LanguageOption = {
@@ -19,12 +19,103 @@
 	let busy = $state(false);
 	let status = $state('Use speech to add a new timeline note.');
 	let error = $state('');
-	let caption = $state('');
+	let closingWorkOrder = $state(false);
+	let fabMenuOpen = $state(false);
+	let speechSheetOpen = $state(false);
+	let cameraSheetOpen = $state(false);
+	let cameraReady = $state(false);
 
 	let mediaRecorder: MediaRecorder | null = null;
 	let recordedChunks: Blob[] = [];
 	let recordedMimeType = '';
-	let photoFile = $state<File | null>(null);
+	let photoInput: HTMLInputElement | null = null;
+	let cameraVideo = $state<HTMLVideoElement | null>(null);
+	let cameraStream: MediaStream | null = null;
+
+	const originalDescription = $derived.by(() => {
+		const workOrder = data.workOrder as Record<string, unknown>;
+		const candidates = [
+			'description',
+			'work_order_description',
+			'work_description',
+			'fault_description',
+			'problem_description',
+			'short_text',
+			'note_text'
+		];
+
+		for (const key of candidates) {
+			const value = workOrder[key];
+			if (typeof value === 'string' && value.trim().length > 0) {
+				return value.trim();
+			}
+		}
+
+		return '';
+	});
+
+	function openFabMenu() {
+		fabMenuOpen = true;
+	}
+
+	function closeSheets() {
+		fabMenuOpen = false;
+		speechSheetOpen = false;
+		cameraSheetOpen = false;
+		stopCameraPreview();
+	}
+
+	function openSpeechSheet() {
+		fabMenuOpen = false;
+		speechSheetOpen = true;
+	}
+
+	async function openCameraPicker() {
+		fabMenuOpen = false;
+		error = '';
+		status = 'Opening camera...';
+
+		if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) {
+			status = 'Camera preview unavailable. Opening photo picker...';
+			photoInput?.click();
+			return;
+		}
+
+		cameraSheetOpen = true;
+		await startCameraPreview();
+	}
+
+	function stopCameraPreview() {
+		cameraStream?.getTracks().forEach((track) => track.stop());
+		cameraStream = null;
+		cameraReady = false;
+		if (cameraVideo) {
+			cameraVideo.srcObject = null;
+		}
+	}
+
+	async function startCameraPreview() {
+		stopCameraPreview();
+
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({
+				video: { facingMode: { ideal: 'environment' } },
+				audio: false
+			});
+			cameraStream = stream;
+			if (cameraVideo) {
+				cameraVideo.srcObject = stream;
+				await cameraVideo.play();
+			}
+			cameraReady = true;
+			status = 'Camera ready. Capture a photo.';
+		} catch (err) {
+			cameraSheetOpen = false;
+			error = err instanceof Error ? err.message : 'Could not open camera.';
+			status = 'Could not open camera. Opening photo picker...';
+			photoInput?.click();
+		}
+	}
 
 	function pickSupportedMimeType(): string | undefined {
 		const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/mpeg'];
@@ -122,6 +213,7 @@
 			}
 
 			status = 'Speech note added to timeline.';
+			speechSheetOpen = false;
 			await invalidateAll();
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Speech note failed.';
@@ -131,22 +223,14 @@
 		}
 	}
 
-	async function uploadPhoto() {
-		if (!photoFile) {
-			error = 'Choose a photo first.';
-			return;
-		}
-
+	async function uploadPhotoFile(file: File) {
 		busy = true;
 		error = '';
 		status = 'Uploading photo...';
 
 		try {
 			const form = new FormData();
-			form.append('photo', photoFile);
-			if (caption.trim()) {
-				form.append('caption', caption.trim());
-			}
+			form.append('photo', file);
 
 			const response = await fetch(`/work-orders/${data.workOrder.id}/photos`, {
 				method: 'POST',
@@ -158,9 +242,9 @@
 				throw new Error(payload.error ?? 'Photo upload failed.');
 			}
 
-			photoFile = null;
-			caption = '';
 			status = 'Photo added to timeline.';
+			cameraSheetOpen = false;
+			stopCameraPreview();
 			await invalidateAll();
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Photo upload failed.';
@@ -169,67 +253,131 @@
 			busy = false;
 		}
 	}
+
+	async function capturePhotoFromCamera() {
+		if (!cameraVideo) {
+			error = 'Camera preview is not available.';
+			return;
+		}
+
+		const width = cameraVideo.videoWidth;
+		const height = cameraVideo.videoHeight;
+		if (!width || !height) {
+			error = 'Camera frame not ready yet.';
+			return;
+		}
+
+		const canvas = document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) {
+			error = 'Could not process camera frame.';
+			return;
+		}
+
+		ctx.drawImage(cameraVideo, 0, 0, width, height);
+
+		const blob = await new Promise<Blob | null>((resolve) => {
+			canvas.toBlob((result) => resolve(result), 'image/jpeg', 0.9);
+		});
+
+		if (!blob) {
+			error = 'Could not capture image.';
+			return;
+		}
+
+		const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+		await uploadPhotoFile(file);
+	}
+
+	function onPhotoSelected(event: Event) {
+		const target = event.currentTarget as HTMLInputElement;
+		const pickedFile = target.files?.[0] ?? null;
+		if (pickedFile) {
+			void uploadPhotoFile(pickedFile);
+		}
+		target.value = '';
+	}
+
+	async function closeWorkOrder() {
+		const confirmed = window.confirm('Close this work order?');
+		if (!confirmed) {
+			return;
+		}
+
+		closingWorkOrder = true;
+		error = '';
+		status = 'Closing work order...';
+
+		try {
+			const response = await fetch(`/work-orders/${data.workOrder.id}/close`, {
+				method: 'POST'
+			});
+
+			const payload = (await response.json()) as { error?: string };
+			if (!response.ok) {
+				throw new Error(payload.error ?? 'Could not close work order.');
+			}
+
+			status = 'Work order closed.';
+			await invalidateAll();
+			await goto('/');
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Could not close work order.';
+			status = 'Closing failed.';
+		} finally {
+			closingWorkOrder = false;
+		}
+	}
 </script>
 
 <main class="container">
 	<a class="back" href="/">Back to open work orders</a>
 
-	<section class="card work-order-summary">
-		<h1>WO #{data.workOrder.wo_no}</h1>
-		<p class="site">{data.workOrder.customer_site_name || 'Unknown site'}</p>
-		<p>{data.workOrder.site_address || 'No address'}</p>
-		<div class="chips">
-			<span>Type: {data.workOrder.work_order_type_eng || 'Work order'}</span>
-			<span>Priority: {data.workOrder.priority_id ?? '-'}</span>
-			<span>SLA: {data.workOrder.sla_end_at ? new Date(data.workOrder.sla_end_at).toLocaleString() : '-'}</span>
-		</div>
-	</section>
-
-	<section class="card actions-card">
-		<h2>Speech Note</h2>
-		<p>Field update by voice only. Record and save directly to timeline.</p>
-		<label for="language">Language</label>
-		<select id="language" bind:value={selectedLanguage} disabled={isRecording || busy}>
-			{#each languageOptions as option}
-				<option value={option.code}>{option.label}</option>
-			{/each}
-		</select>
-
-		<div class="actions">
-			{#if !isRecording}
-				<button class="primary" onclick={startRecording} disabled={busy}>Start recording</button>
+	<section class="card">
+		<div class="card-head">
+			<h2>Timeline</h2>
+			{#if data.workOrder.is_open}
+				<button class="close-btn" onclick={closeWorkOrder} disabled={busy || closingWorkOrder}>
+					{closingWorkOrder ? 'Closing...' : 'Close work order'}
+				</button>
 			{:else}
-				<button class="danger" onclick={stopRecording} disabled={busy}>Stop recording</button>
+				<span class="closed-pill">Closed</span>
 			{/if}
 		</div>
-	</section>
-
-	<section class="card actions-card">
-		<h2>Attach Photo</h2>
-		<p>Add a photo proof to the timeline.</p>
-		<input
-			type="file"
-			accept="image/*"
-			onchange={(event) => {
-				const target = event.currentTarget as HTMLInputElement;
-				photoFile = target.files?.[0] ?? null;
-			}}
-		/>
-		<input type="text" bind:value={caption} placeholder="Optional caption" />
-		<button class="primary" onclick={uploadPhoto} disabled={busy}>Upload photo</button>
-	</section>
-
-	<section class="card">
-		<h2>Timeline</h2>
+		<p class="context">WO #{data.workOrder.wo_no} · {data.workOrder.customer_site_name || 'Unknown site'}</p>
 		<p class="status">{status}</p>
 		{#if error}
 			<p class="error">Error: {error}</p>
 		{/if}
 
 		{#if data.events.length === 0}
-			<p>No timeline events yet.</p>
+			{#if originalDescription}
+				<div class="timeline">
+					<article class="event original-event">
+						<div class="event-head">
+							<strong>original_work_order</strong>
+							<span>Initial description</span>
+						</div>
+						<p>{originalDescription}</p>
+					</article>
+				</div>
+			{:else}
+				<p>No timeline events yet.</p>
+			{/if}
 		{:else}
 			<div class="timeline">
+				{#if originalDescription}
+					<article class="event original-event">
+						<div class="event-head">
+							<strong>original_work_order</strong>
+							<span>Initial description</span>
+						</div>
+						<p>{originalDescription}</p>
+					</article>
+				{/if}
+
 				{#each data.events as event}
 					<article class="event">
 						<div class="event-head">
@@ -250,6 +398,62 @@
 			</div>
 		{/if}
 	</section>
+
+	<input
+		bind:this={photoInput}
+		type="file"
+		class="hidden-input"
+		accept="image/*"
+		capture="environment"
+		onchange={onPhotoSelected}
+	/>
+
+	<button class="fab" aria-label="Add update" onclick={openFabMenu} disabled={busy}>+</button>
+
+	{#if fabMenuOpen}
+		<button class="sheet-scrim" aria-label="Close actions" onclick={closeSheets}></button>
+		<div class="sheet" role="dialog" aria-modal="true" aria-label="Quick actions">
+			<h3>Add update</h3>
+			<button class="sheet-action" onclick={openSpeechSheet} disabled={busy}>Record speech note</button>
+			<button class="sheet-action" onclick={openCameraPicker} disabled={busy}>Take picture</button>
+			<button class="sheet-close" onclick={closeSheets}>Close</button>
+		</div>
+	{/if}
+
+	{#if speechSheetOpen}
+		<button class="sheet-scrim" aria-label="Close speech note" onclick={closeSheets}></button>
+		<div class="sheet" role="dialog" aria-modal="true" aria-label="Speech note">
+			<h3>Speech note</h3>
+			<label for="language">Language</label>
+			<select id="language" bind:value={selectedLanguage} disabled={isRecording || busy}>
+				{#each languageOptions as option}
+					<option value={option.code}>{option.label}</option>
+				{/each}
+			</select>
+
+			{#if !isRecording}
+				<button class="sheet-action" onclick={startRecording} disabled={busy}>Start recording</button>
+			{:else}
+				<button class="sheet-action danger" onclick={stopRecording} disabled={busy}>Stop recording</button>
+			{/if}
+
+			<button class="sheet-close" onclick={closeSheets} disabled={busy}>Close</button>
+		</div>
+	{/if}
+
+	{#if cameraSheetOpen}
+		<button class="sheet-scrim" aria-label="Close camera" onclick={closeSheets}></button>
+		<div class="sheet" role="dialog" aria-modal="true" aria-label="Take picture">
+			<h3>Take picture</h3>
+			<div class="camera-frame">
+				<video bind:this={cameraVideo} class="camera-video" playsinline autoplay muted></video>
+			</div>
+			<button class="sheet-action" onclick={capturePhotoFromCamera} disabled={busy || !cameraReady}>
+				Capture photo
+			</button>
+			<button class="sheet-close" onclick={closeSheets} disabled={busy}>Close</button>
+		</div>
+	{/if}
 </main>
 
 <style>
@@ -258,6 +462,7 @@
 		margin: 0 auto;
 		display: grid;
 		gap: 0.9rem;
+		padding-bottom: 9rem;
 	}
 
 	.back {
@@ -274,35 +479,44 @@
 		box-shadow: 0 10px 26px rgb(27 66 125 / 10%);
 	}
 
-	h1,
 	h2 {
 		margin: 0;
 		font-family: 'Space Grotesk', 'Nunito', sans-serif;
 	}
 
-	.site {
-		font-weight: 800;
-	}
-
-	.chips {
+	.card-head {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		margin-top: 0.7rem;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.7rem;
 	}
 
-	.chips span {
-		font-size: 0.85rem;
-		font-weight: 700;
-		padding: 0.25rem 0.65rem;
+	.close-btn {
 		border-radius: 999px;
-		background: #e8f0fe;
-		color: #185abc;
+		padding: 0.4rem 0.8rem;
+		font-size: 0.82rem;
+		font-weight: 800;
+		background: #fff1f0;
+		border: 1px solid #f7c8c3;
+		color: #9c2720;
 	}
 
-	.actions-card {
-		display: grid;
-		gap: 0.6rem;
+	.closed-pill {
+		display: inline-flex;
+		align-items: center;
+		border-radius: 999px;
+		padding: 0.3rem 0.7rem;
+		font-size: 0.78rem;
+		font-weight: 800;
+		background: #e7f4ea;
+		border: 1px solid #b8dfc1;
+		color: #1d6a2f;
+	}
+
+	.context {
+		margin: 0.35rem 0 0.2rem;
+		font-weight: 700;
+		color: #495c75;
 	}
 
 	select,
@@ -318,21 +532,10 @@
 		font-weight: 800;
 	}
 
-	.primary {
-		background: #1967d2;
-		border-color: #1967d2;
-		color: #fff;
-	}
-
 	.danger {
 		background: #ea4335;
 		border-color: #ea4335;
 		color: #fff;
-	}
-
-	.actions {
-		display: flex;
-		gap: 0.7rem;
 	}
 
 	.status {
@@ -358,6 +561,11 @@
 		gap: 0.5rem;
 	}
 
+	.original-event {
+		border-color: #bfd4ff;
+		background: #f6f9ff;
+	}
+
 	.event-head {
 		display: flex;
 		justify-content: space-between;
@@ -372,13 +580,92 @@
 		border: 1px solid #d8deea;
 	}
 
+	.hidden-input {
+		display: none;
+	}
+
+	.fab {
+		position: fixed;
+		right: 1rem;
+		bottom: 6.5rem;
+		width: 3.4rem;
+		height: 3.4rem;
+		border-radius: 999px;
+		border: 0;
+		background: #1967d2;
+		color: #fff;
+		font-size: 2rem;
+		line-height: 1;
+		box-shadow: 0 12px 30px rgb(25 103 210 / 40%);
+		z-index: 30;
+	}
+
+	.sheet-scrim {
+		position: fixed;
+		inset: 0;
+		background: rgb(22 28 36 / 35%);
+		border: 0;
+		z-index: 40;
+	}
+
+	.sheet {
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		padding: 1rem;
+		display: grid;
+		gap: 0.65rem;
+		background: #fff;
+		border-radius: 1.2rem 1.2rem 0 0;
+		box-shadow: 0 -8px 22px rgb(0 0 0 / 14%);
+		z-index: 50;
+	}
+
+	h3 {
+		margin: 0;
+		font-family: 'Space Grotesk', 'Nunito', sans-serif;
+	}
+
+	.sheet-action,
+	.sheet-close {
+		width: 100%;
+		font-weight: 800;
+	}
+
+	.sheet-action {
+		background: #1967d2;
+		border-color: #1967d2;
+		color: #fff;
+	}
+
+	.sheet-close {
+		background: #f7f9fc;
+		color: #1f4d7c;
+	}
+
+	.camera-frame {
+		width: 100%;
+		border-radius: 1rem;
+		overflow: hidden;
+		background: #0f1724;
+		min-height: 12rem;
+	}
+
+	.camera-video {
+		width: 100%;
+		height: auto;
+		display: block;
+	}
+
 	@media (max-width: 700px) {
 		.card {
 			padding: 0.85rem;
 		}
 
-		.actions {
-			flex-direction: column;
+		.fab {
+			right: 0.85rem;
+			bottom: 6rem;
 		}
 	}
 </style>
