@@ -21,14 +21,28 @@ function isPublicPath(pathname: string): boolean {
 }
 
 function getSupabaseConfig() {
-	const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || env.PUBLIC_SUPABASE_URL;
-	const anonKey =
+	const rawUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL || env.PUBLIC_SUPABASE_URL;
+	const rawAnonKey =
 		env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || env.PUBLIC_SUPABASE_ANON_KEY;
+
+	const normalize = (value?: string) => value?.trim().replace(/^['\"]|['\"]$/g, '');
+	const url = normalize(rawUrl);
+	const anonKey = normalize(rawAnonKey);
 
 	if (!url || !anonKey) {
 		throw new Error(
 			'Supabase config missing. Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY (or SUPABASE_URL + SUPABASE_ANON_KEY) in SWA app settings.'
 		);
+	}
+
+	try {
+		new URL(url);
+	} catch {
+		throw new Error('Supabase config invalid: SUPABASE URL is not a valid URL.');
+	}
+
+	if (anonKey.length < 40) {
+		throw new Error('Supabase config invalid: anon key looks malformed.');
 	}
 
 	return { url, anonKey };
@@ -101,7 +115,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 
 		const isConfigError =
-			error instanceof Error && error.message.toLowerCase().includes('supabase config missing');
+			error instanceof Error && error.message.toLowerCase().includes('supabase config');
 		const reason = isConfigError ? 'config_missing' : `runtime_${stage}`;
 
 		console.error('Auth hook failure', {
