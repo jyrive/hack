@@ -28,6 +28,11 @@
 	let mediaRecorder: MediaRecorder | null = null;
 	let recordedChunks: Blob[] = [];
 	let recordedMimeType = '';
+	let audioContext: AudioContext | null = null;
+	let analyser: AnalyserNode | null = null;
+	let levelAnimationId: number | null = null;
+	let micLevels = $state<number[]>([0.2, 0.28, 0.24, 0.32, 0.22]);
+	let isSpeaking = $state(false);
 	let photoInput: HTMLInputElement | null = null;
 	let cameraVideo = $state<HTMLVideoElement | null>(null);
 	let cameraStream: MediaStream | null = null;
@@ -134,6 +139,70 @@
 		return 'webm';
 	}
 
+	function resetMicVisualizer() {
+		micLevels = [0.2, 0.28, 0.24, 0.32, 0.22];
+		isSpeaking = false;
+	}
+
+	function stopMicVisualizer() {
+		if (levelAnimationId !== null) {
+			cancelAnimationFrame(levelAnimationId);
+			levelAnimationId = null;
+		}
+
+		analyser?.disconnect();
+		analyser = null;
+
+		if (audioContext) {
+			void audioContext.close();
+			audioContext = null;
+		}
+
+		resetMicVisualizer();
+	}
+
+	function startMicVisualizer(stream: MediaStream) {
+		stopMicVisualizer();
+
+		audioContext = new AudioContext();
+		const source = audioContext.createMediaStreamSource(stream);
+		analyser = audioContext.createAnalyser();
+		analyser.fftSize = 256;
+		source.connect(analyser);
+
+		const samples = new Uint8Array(analyser.frequencyBinCount);
+		const barCount = 5;
+
+		const tick = () => {
+			if (!analyser) {
+				return;
+			}
+
+			analyser.getByteTimeDomainData(samples);
+
+			let sum = 0;
+			for (const value of samples) {
+				const centered = (value - 128) / 128;
+				sum += centered * centered;
+			}
+
+			const rms = Math.sqrt(sum / samples.length);
+			const normalized = Math.min(1, rms * 5);
+			isSpeaking = normalized > 0.06;
+
+			micLevels = Array.from({ length: barCount }, (_unused, index) => {
+				const wobble = ((index + 1) * 13 + Date.now() / 40) % 10;
+				const wobbleFactor = 0.85 + wobble / 50;
+				const value = 0.15 + normalized * wobbleFactor;
+				return Math.max(0.15, Math.min(1, value));
+			});
+
+			levelAnimationId = requestAnimationFrame(tick);
+		};
+
+		levelAnimationId = requestAnimationFrame(tick);
+	}
+
 	async function startRecording() {
 		error = '';
 		status = 'Preparing microphone...';
@@ -152,6 +221,7 @@
 
 		try {
 			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			startMicVisualizer(stream);
 			const mimeType = pickSupportedMimeType();
 			mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
 			recordedMimeType = mediaRecorder.mimeType || mimeType || 'audio/webm';
@@ -164,6 +234,7 @@
 			};
 
 			mediaRecorder.onstop = async () => {
+				stopMicVisualizer();
 				stream.getTracks().forEach((track) => track.stop());
 				status = 'Uploading audio and creating timeline note...';
 				await submitSpeechNote();
@@ -184,6 +255,7 @@
 		}
 		mediaRecorder.stop();
 		isRecording = false;
+		isSpeaking = false;
 	}
 
 	async function submitSpeechNote() {
@@ -431,6 +503,18 @@
 				{/each}
 			</select>
 
+			{#if isRecording}
+				<div class="recording-indicator" aria-live="polite" aria-label="Recording in progress">
+					<span class="recording-dot"></span>
+					<span class="recording-text">{isSpeaking ? 'Speaking detected' : 'Listening for speech...'}</span>
+					<div class="recording-bars" aria-hidden="true">
+						{#each micLevels as level}
+							<span style={`transform: scaleY(${level});`}></span>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
 			{#if !isRecording}
 				<button class="sheet-action" onclick={startRecording} disabled={busy}>Start recording</button>
 			{:else}
@@ -642,6 +726,60 @@
 	.sheet-close {
 		background: #f7f9fc;
 		color: #1f4d7c;
+	}
+
+	.recording-indicator {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		padding: 0.6rem 0.75rem;
+		border-radius: 0.85rem;
+		background: #eef4ff;
+		border: 1px solid #c6d8ff;
+	}
+
+	.recording-dot {
+		width: 0.55rem;
+		height: 0.55rem;
+		border-radius: 999px;
+		background: #ea4335;
+		animation: pulse-dot 1s ease-in-out infinite;
+	}
+
+	.recording-text {
+		font-size: 0.84rem;
+		font-weight: 800;
+		color: #244d91;
+	}
+
+	.recording-bars {
+		display: inline-flex;
+		align-items: flex-end;
+		gap: 0.2rem;
+		height: 1rem;
+		margin-left: auto;
+	}
+
+	.recording-bars span {
+		width: 0.16rem;
+		height: 1rem;
+		transform-origin: bottom center;
+		border-radius: 999px;
+		background: #2f67c8;
+		transition: transform 90ms linear, opacity 90ms linear;
+	}
+
+	@keyframes pulse-dot {
+		0%,
+		100% {
+			transform: scale(1);
+			opacity: 1;
+		}
+
+		50% {
+			transform: scale(1.28);
+			opacity: 0.55;
+		}
 	}
 
 	.camera-frame {

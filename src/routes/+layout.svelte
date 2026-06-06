@@ -10,6 +10,11 @@
 	let accountSheetOpen = $state(false);
 	let selectedLanguage = $state<'en' | 'sv' | 'fi'>('en');
 	let languageMenuOpen = $state(false);
+	let mediaPermissionSheetOpen = $state(false);
+	let mediaPermissionBusy = $state(false);
+	let mediaPermissionMessage = $state('');
+	let cameraPermission = $state<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
+	let microphonePermission = $state<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
 
 	const userEmail = $derived(data.user?.email ?? 'User');
 	const userInitial = $derived(userEmail.charAt(0).toUpperCase() || 'U');
@@ -53,10 +58,66 @@
 
 		document.documentElement.lang = selectedLanguage;
 
+		void refreshMediaPermissionState();
+
 		return () => {
 			window.removeEventListener('open-building-sheet', onOpenBuildingSheet);
 		};
 	});
+
+	async function refreshMediaPermissionState() {
+		if (!('permissions' in navigator)) {
+			cameraPermission = 'unknown';
+			microphonePermission = 'unknown';
+			mediaPermissionSheetOpen = true;
+			return;
+		}
+
+		const queryPermission = async (name: 'camera' | 'microphone') => {
+			try {
+				const result = await navigator.permissions.query({ name } as PermissionDescriptor);
+				return result.state;
+			} catch {
+				return 'unknown';
+			}
+		};
+
+		const [camera, microphone] = await Promise.all([
+			queryPermission('camera'),
+			queryPermission('microphone')
+		]);
+
+		cameraPermission = camera as typeof cameraPermission;
+		microphonePermission = microphone as typeof microphonePermission;
+
+		mediaPermissionSheetOpen = cameraPermission !== 'granted' || microphonePermission !== 'granted';
+	}
+
+	async function requestMediaPermissions() {
+		mediaPermissionBusy = true;
+		mediaPermissionMessage = '';
+
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({
+				audio: true,
+				video: { facingMode: { ideal: 'environment' } }
+			});
+			stream.getTracks().forEach((track) => track.stop());
+			await refreshMediaPermissionState();
+
+			if (!mediaPermissionSheetOpen) {
+				mediaPermissionMessage = 'Camera and microphone are enabled.';
+			}
+		} catch (error) {
+			mediaPermissionMessage =
+				error instanceof Error
+					? error.message
+					: 'Permission request failed. Please enable camera and microphone in browser settings.';
+			await refreshMediaPermissionState();
+		} finally {
+			mediaPermissionBusy = false;
+		}
+	}
 
 	function applyBuilding(selected: string) {
 		const nextUrl = new URL(window.location.href);
@@ -105,6 +166,10 @@
 		notificationSheetOpen = false;
 		accountSheetOpen = false;
 		languageMenuOpen = false;
+	}
+
+	function dismissMediaPermissionSheet() {
+		mediaPermissionSheetOpen = false;
 	}
 
 	function languageLabel(lang: 'en' | 'sv' | 'fi'): string {
@@ -157,6 +222,40 @@
 			<span class="user-chip-text">{userEmail}</span>
 		</button>
 	</header>
+
+	{#if mediaPermissionSheetOpen}
+		<button
+			type="button"
+			class="sheet-backdrop media-permission-backdrop"
+			onclick={dismissMediaPermissionSheet}
+			aria-label="Close media permission panel"
+		></button>
+		<div class="media-permission-sheet" role="dialog" aria-modal="true" aria-label="Enable camera and microphone">
+			<div class="sheet-handle"></div>
+			<h2>Enable Camera and Microphone</h2>
+			<p class="permission-text">
+				This app uses camera for photos and microphone for speech notes. Please allow access to continue smoothly.
+			</p>
+			<div class="permission-status-row">
+				<span class="permission-status" class:granted={cameraPermission === 'granted'}>
+					Camera: {cameraPermission}
+				</span>
+				<span class="permission-status" class:granted={microphonePermission === 'granted'}>
+					Microphone: {microphonePermission}
+				</span>
+			</div>
+			{#if mediaPermissionMessage}
+				<p class="permission-help">{mediaPermissionMessage}</p>
+			{/if}
+			<button type="button" class="permission-primary" onclick={requestMediaPermissions} disabled={mediaPermissionBusy}>
+				{mediaPermissionBusy ? 'Requesting access...' : 'Allow camera and microphone'}
+			</button>
+			<p class="permission-help">
+				If blocked, open browser site settings and set Camera and Microphone to Allow.
+			</p>
+			<button type="button" class="permission-secondary" onclick={dismissMediaPermissionSheet}>Not now</button>
+		</div>
+	{/if}
 
 	{#if buildingSheetOpen || notificationSheetOpen || accountSheetOpen}
 		<button
@@ -496,6 +595,87 @@
 		background: rgb(5 17 39 / 35%);
 	}
 
+	.media-permission-backdrop {
+		z-index: 110;
+	}
+
+	.media-permission-sheet {
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 120;
+		max-width: 100vw;
+		background: #fff;
+		border-radius: 1.25rem 1.25rem 0 0;
+		padding: 0.6rem 1rem 1rem;
+		box-shadow: 0 -12px 36px rgb(7 20 47 / 20%);
+		animation: sheet-in 180ms ease-out;
+	}
+
+	.permission-text {
+		margin: 0 0 0.7rem;
+		font-size: 0.92rem;
+		font-weight: 700;
+		opacity: 0.86;
+	}
+
+	.permission-status-row {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.45rem;
+		margin-bottom: 0.65rem;
+	}
+
+	.permission-status {
+		display: inline-flex;
+		justify-content: center;
+		align-items: center;
+		border-radius: 999px;
+		padding: 0.38rem 0.55rem;
+		font-size: 0.78rem;
+		font-weight: 800;
+		border: 1px solid #f1c4be;
+		background: #fff3f2;
+		color: #8e2f27;
+	}
+
+	.permission-status.granted {
+		border-color: #b8dfc1;
+		background: #e7f4ea;
+		color: #1d6a2f;
+	}
+
+	.permission-primary,
+	.permission-secondary {
+		width: 100%;
+		border-radius: 0.85rem;
+		padding: 0.72rem 0.9rem;
+		font: inherit;
+		font-weight: 800;
+		cursor: pointer;
+	}
+
+	.permission-primary {
+		border: 0;
+		background: #1967d2;
+		color: #fff;
+	}
+
+	.permission-secondary {
+		margin-top: 0.5rem;
+		border: 1px solid var(--md3-outline);
+		background: #fff;
+		color: var(--md3-text);
+	}
+
+	.permission-help {
+		margin: 0.6rem 0 0;
+		font-size: 0.8rem;
+		font-weight: 700;
+		opacity: 0.78;
+	}
+
 	.building-sheet {
 		position: fixed;
 		left: 0;
@@ -728,7 +908,15 @@
 			padding-bottom: 1.25rem;
 		}
 
+		.media-permission-sheet {
+			padding-bottom: 1.25rem;
+		}
+
 		.lang-row {
+			grid-template-columns: 1fr;
+		}
+
+		.permission-status-row {
 			grid-template-columns: 1fr;
 		}
 
