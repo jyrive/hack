@@ -1,7 +1,18 @@
+<script lang="ts">
+	import { page } from '$app/state';
+
+	const reason = $derived(page.url.searchParams.get('reason'));
+	const isConfigIssue = $derived(reason === 'config_missing');
+</script>
+
 <main>
 	<h1>Sign-in failed</h1>
-	<p>Please try again.</p>
-	<a href="/auth/signin">Continue with Google</a>
+	{#if isConfigIssue}
+		<p>Authentication is not configured in the server runtime environment.</p>
+	{:else}
+		<p>Please try again.</p>
+	{/if}
+	<a href="/auth/signin" data-sveltekit-reload>Continue with Google</a>
 </main>
 
 <style>

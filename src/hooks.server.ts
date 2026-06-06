@@ -95,8 +95,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 			throw error;
 		}
 
+		const isConfigError =
+			error instanceof Error && error.message.toLowerCase().includes('supabase config missing');
+		const reason = isConfigError ? 'config_missing' : 'runtime_error';
+
 		console.error('Auth hook failure', {
 			path: event.url.pathname,
+			reason,
 			hasViteUrl: Boolean(env.VITE_SUPABASE_URL),
 			hasViteAnonKey: Boolean(env.VITE_SUPABASE_ANON_KEY),
 			hasSupabaseUrl: Boolean(env.SUPABASE_URL),
@@ -104,10 +109,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 			error
 		});
 
+		if (event.url.pathname === '/auth/signin' || event.url.pathname === '/auth/callback') {
+			throw redirect(303, `/auth/error?reason=${reason}`);
+		}
+
 		if (isPublicPath(event.url.pathname) || event.url.pathname === '/auth/error') {
 			return resolve(event);
 		}
 
-		throw redirect(303, '/auth/error');
+		throw redirect(303, `/auth/error?reason=${reason}`);
 	}
 };
