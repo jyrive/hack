@@ -42,22 +42,15 @@ function getSupabaseConfig() {
 		throw new Error('Supabase config invalid: SUPABASE URL is not a valid URL.');
 	}
 
-	if (anonKey.length < 40) {
-		throw new Error('Supabase config invalid: anon key looks malformed.');
-	}
-
 	return { url, anonKey };
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = null;
-	let stage = 'init';
 
 	try {
-		stage = 'config';
 		const { url: supabaseUrl, anonKey: supabaseAnonKey } = getSupabaseConfig();
 
-		stage = 'client_init';
 		event.locals.supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
 			realtime: {
 				transport: WebSocket
@@ -81,7 +74,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 		// Some provider setups land on /?code=... instead of /auth/callback; exchange here too.
 		const code = event.url.searchParams.get('code');
 		if (code && event.url.pathname !== '/auth/callback') {
-			stage = 'root_oauth_exchange';
 			try {
 				const { error } = await event.locals.supabase.auth.exchangeCodeForSession(code);
 				if (error) {
@@ -96,7 +88,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 			throw redirect(303, next);
 		}
 
-		stage = 'get_user';
 		const {
 			data: { user }
 		} = await event.locals.supabase.auth.getUser();
@@ -120,19 +111,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 		const isConfigError =
 			error instanceof Error && error.message.toLowerCase().includes('supabase config');
-		const reason = isConfigError ? 'config_missing' : `runtime_${stage}`;
+		const reason = isConfigError ? 'config_missing' : 'runtime_error';
 
 		console.error('Auth hook failure', {
 			path: event.url.pathname,
 			reason,
-			stage,
-			hasViteUrl: Boolean(env.VITE_SUPABASE_URL),
-			hasViteAnonKey: Boolean(env.VITE_SUPABASE_ANON_KEY),
-			hasSupabaseUrl: Boolean(env.SUPABASE_URL),
-			hasSupabaseAnonKey: Boolean(env.SUPABASE_ANON_KEY),
-			errorName: error instanceof Error ? error.name : String(error),
-			errorMessage: error instanceof Error ? error.message : String(error),
-			error
+			error: error instanceof Error ? error.message : String(error)
 		});
 
 		if (event.url.pathname === '/auth/signin' || event.url.pathname === '/auth/callback') {
