@@ -3,6 +3,10 @@
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
+	"dependencies": {
+		"@supabase/ssr": "^0.5.2",
+		"@supabase/supabase-js": "^2.57.4"
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",

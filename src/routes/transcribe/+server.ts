@@ -4,7 +4,11 @@ import type { RequestHandler } from './$types';
 
 const SUPPORTED_LANGUAGES = new Set(['en', 'sv', 'fi']);
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ locals, request }) => {
+	if (!locals.user) {
+		return json({ error: 'Authentication required.' }, { status: 401 });
+	}
+
 	const apiKey = env.OPENAI_API_KEY;
 	if (!apiKey) {
 		return json({ error: 'OPENAI_API_KEY is not configured on the server.' }, { status: 500 });

@@ -13,5 +13,6 @@ kiinteistökierros (kerran viikossa)
 liukkauden torjunta (ei frekvenssiä)
 scheduled maintenance filessa löytyy tiedot
 onko mahdollista luokitella dataa huoltomiehen ?
+niputtaminen pitää tutkia datan perusteella
 
 Luokitteluesimerkit (avainsanoja): pahvilaatikko (palokuorma), roska, liukas lattia, etc... 

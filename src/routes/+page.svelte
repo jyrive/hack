@@ -15,7 +15,7 @@
 	let isTranscribing = $state(false);
 	let error = $state('');
 	let transcript = $state('');
-    let status = $state('Tap Start recording to begin.');
+	let status = $state('Tap Start recording to begin.');
 
 	let mediaRecorder: MediaRecorder | null = null;
 	let recordedChunks: Blob[] = [];
@@ -138,56 +138,142 @@
 </script>
 
 <main>
-	<h1>Whisper Microphone Test</h1>
+	<h1>Google Speech Playground</h1>
+	<p class="subtitle">Record your voice, pick a language, and transcribe instantly.</p>
 
-	<label for="language">Language</label>
-	<select id="language" bind:value={selectedLanguage} disabled={isRecording || isTranscribing}>
-		{#each languageOptions as option}
-			<option value={option.code}>{option.label}</option>
-		{/each}
-	</select>
+	<section class="card controls">
+		<label for="language">Language</label>
+		<select id="language" bind:value={selectedLanguage} disabled={isRecording || isTranscribing}>
+			{#each languageOptions as option}
+				<option value={option.code}>{option.label}</option>
+			{/each}
+		</select>
 
-	<div>
-		{#if !isRecording}
-			<button onclick={startRecording} disabled={isTranscribing}>Start recording</button>
-		{:else}
-			<button onclick={stopRecording} disabled={isTranscribing}>Stop recording</button>
+		<div class="actions">
+			{#if !isRecording}
+				<button class="primary" onclick={startRecording} disabled={isTranscribing}>Start recording</button>
+			{:else}
+				<button class="danger" onclick={stopRecording} disabled={isTranscribing}>Stop recording</button>
+			{/if}
+		</div>
+
+		<p class="status">{status}</p>
+
+		{#if isTranscribing}
+			<p class="hint">Transcribing...</p>
 		{/if}
-	</div>
 
-	<p>{status}</p>
+		{#if error}
+			<p class="error">Error: {error}</p>
+		{/if}
+	</section>
 
-	{#if isTranscribing}
-		<p>Transcribing...</p>
-	{/if}
-
-	{#if error}
-		<p style="color: #b00020">Error: {error}</p>
-	{/if}
-
-	<h2>Transcript</h2>
-	<textarea readonly rows="8" value={transcript} placeholder="Your transcript will appear here"></textarea>
+	<section class="card transcript">
+		<h2>Transcript</h2>
+		<textarea readonly rows="8" value={transcript} placeholder="Your transcript will appear here"></textarea>
+	</section>
 </main>
 
 <style>
 	main {
-		max-width: 720px;
+		max-width: 980px;
 		margin: 2rem auto;
-		padding: 1rem;
+		padding: 0.4rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
-		font-family: system-ui, sans-serif;
+		gap: 1rem;
+	}
+
+	h1,
+	h2 {
+		margin: 0;
+		font-family: 'Space Grotesk', 'Nunito', sans-serif;
+	}
+
+	.subtitle {
+		margin: 0;
+		font-weight: 700;
+		color: #2d4863;
+	}
+
+	.card {
+		background: #ffffff;
+		border-radius: 1rem;
+		border: 1px solid #d8deea;
+		padding: 1rem;
+		box-shadow: 0 12px 34px rgb(27 66 125 / 10%);
+	}
+
+	.controls {
+		display: grid;
+		gap: 0.8rem;
+	}
+
+	.actions {
+		display: flex;
+		gap: 0.7rem;
 	}
 
 	select,
 	button,
 	textarea {
 		font: inherit;
-		padding: 0.6rem 0.8rem;
+		padding: 0.65rem 0.85rem;
+		border-radius: 0.8rem;
+		border: 1px solid #d8deea;
 	}
 
 	button {
+		font-weight: 800;
+	}
+
+	button:disabled {
+		opacity: 0.6;
 		cursor: pointer;
+	}
+
+	.primary {
+		background: #1967d2;
+		border-color: #1967d2;
+		color: #fff;
+	}
+
+	.danger {
+		background: #ea4335;
+		border-color: #ea4335;
+		color: #fff;
+	}
+
+	.status {
+		font-weight: 700;
+		color: #1f4d7c;
+	}
+
+	.hint {
+		margin: 0;
+		font-weight: 700;
+		color: #1967d2;
+	}
+
+	.error {
+		margin: 0;
+		color: #b3261e;
+		font-weight: 700;
+	}
+
+	textarea {
+		resize: vertical;
+		min-height: 11rem;
+		background: #fbfdff;
+	}
+
+	@media (max-width: 700px) {
+		main {
+			margin-top: 1rem;
+		}
+
+		.actions {
+			flex-direction: column;
+		}
 	}
 </style>
