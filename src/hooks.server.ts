@@ -21,12 +21,13 @@ function isPublicPath(pathname: string): boolean {
 }
 
 function getSupabaseConfig() {
-	const url = env.VITE_SUPABASE_URL;
-	const anonKey = env.VITE_SUPABASE_ANON_KEY;
+	const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || env.PUBLIC_SUPABASE_URL;
+	const anonKey =
+		env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || env.PUBLIC_SUPABASE_ANON_KEY;
 
 	if (!url || !anonKey) {
 		throw new Error(
-			'Supabase config missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in SWA app settings.'
+			'Supabase config missing. Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY (or SUPABASE_URL + SUPABASE_ANON_KEY) in SWA app settings.'
 		);
 	}
 
