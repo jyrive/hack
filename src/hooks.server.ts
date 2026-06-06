@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { createServerClient } from '@supabase/ssr';
-import { redirect, type Handle } from '@sveltejs/kit';
+import { isRedirect, redirect, type Handle } from '@sveltejs/kit';
 
 const PUBLIC_PATHS = new Set(['/auth/signin', '/auth/callback', '/auth/error', '/hello']);
 const PUBLIC_PREFIXES = ['/_app/', '/icons/'];
@@ -91,6 +91,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 		return resolve(event);
 	} catch (error) {
+		if (isRedirect(error)) {
+			throw error;
+		}
+
 		console.error('Auth hook failure', {
 			path: event.url.pathname,
 			hasViteUrl: Boolean(env.VITE_SUPABASE_URL),
