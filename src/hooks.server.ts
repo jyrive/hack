@@ -2,7 +2,7 @@ import { env } from '$env/dynamic/private';
 import { createServerClient } from '@supabase/ssr';
 import { isRedirect, redirect, type Handle } from '@sveltejs/kit';
 
-const PUBLIC_PATHS = new Set(['/auth/signin', '/auth/callback', '/auth/error', '/hello']);
+const PUBLIC_PATHS = new Set(['/auth/signin', '/auth/callback', '/auth/error', '/auth/debug', '/hello']);
 const PUBLIC_PREFIXES = ['/_app/', '/icons/'];
 const PUBLIC_FILES = new Set(['/robots.txt', '/site.webmanifest', '/service-worker.js', '/favicon.ico']);
 
