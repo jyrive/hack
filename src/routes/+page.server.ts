@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	}
 
 	const { data, error: queryError } = await query
-		.order('priority_id', { ascending: false })
+		.order('priority_id', { ascending: true, nullsFirst: false })
 		.order('sla_end_at', { ascending: true, nullsFirst: false })
 		.limit(100);
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import type { LayoutData } from './$types';
@@ -7,9 +8,16 @@
 	let buildingSheetOpen = $state(false);
 	let accountSheetOpen = $state(false);
 	let selectedLanguage = $state<'en' | 'sv' | 'fi'>('en');
+	let languageMenuOpen = $state(false);
 
 	const userEmail = $derived(data.user?.email ?? 'User');
 	const userInitial = $derived(userEmail.charAt(0).toUpperCase() || 'U');
+	const activePath = $derived(page.url.pathname);
+	const navSearch = $derived(page.url.search);
+	const workOrdersHref = $derived(`/${navSearch}`);
+	const dashboardHref = $derived(`/dashboard${navSearch}`);
+	const dashboardActive = $derived(activePath === '/dashboard');
+	const workOrdersActive = $derived(activePath === '/' || activePath.startsWith('/work-orders'));
 
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
@@ -55,11 +63,19 @@
 	function openAccountSheet() {
 		buildingSheetOpen = false;
 		accountSheetOpen = true;
+		languageMenuOpen = false;
 	}
 
 	function closeSheets() {
 		buildingSheetOpen = false;
 		accountSheetOpen = false;
+		languageMenuOpen = false;
+	}
+
+	function languageLabel(lang: 'en' | 'sv' | 'fi'): string {
+		if (lang === 'sv') return 'Svenska';
+		if (lang === 'fi') return 'Suomi';
+		return 'English';
 	}
 </script>
 
@@ -92,10 +108,10 @@
 					/>
 				</svg>
 			</button>
-			<div class="brand-copy">
-				<a href="/"><strong>Field Work Sprint</strong></a>
-				<p>{data.selectedBuilding || 'All buildings'}</p>
-			</div>
+		</div>
+
+		<div class="center-logo" aria-hidden="true">
+			<img src="/icons/Luotea-logo.png" alt="" />
 		</div>
 
 		<button type="button" class="user-chip" onclick={openAccountSheet} aria-label="Open account options">
@@ -146,32 +162,43 @@
 
 			<section class="lang-section">
 				<h3>Language</h3>
-				<div class="lang-row">
-					<button
-						type="button"
-						class="lang-btn"
-						class:selected={selectedLanguage === 'en'}
-						onclick={() => applyLanguage('en')}
-					>
-						English
-					</button>
-					<button
-						type="button"
-						class="lang-btn"
-						class:selected={selectedLanguage === 'sv'}
-						onclick={() => applyLanguage('sv')}
-					>
-						Svenska
-					</button>
-					<button
-						type="button"
-						class="lang-btn"
-						class:selected={selectedLanguage === 'fi'}
-						onclick={() => applyLanguage('fi')}
-					>
-						Suomi
-					</button>
-				</div>
+				<button
+					type="button"
+					class="lang-trigger"
+					onclick={() => (languageMenuOpen = !languageMenuOpen)}
+					aria-expanded={languageMenuOpen}
+				>
+					<span>{languageLabel(selectedLanguage)}</span>
+					<span class="chevron" class:open={languageMenuOpen}>▾</span>
+				</button>
+				{#if languageMenuOpen}
+					<div class="lang-row">
+						<button
+							type="button"
+							class="lang-btn"
+							class:selected={selectedLanguage === 'en'}
+							onclick={() => applyLanguage('en')}
+						>
+							English
+						</button>
+						<button
+							type="button"
+							class="lang-btn"
+							class:selected={selectedLanguage === 'sv'}
+							onclick={() => applyLanguage('sv')}
+						>
+							Svenska
+						</button>
+						<button
+							type="button"
+							class="lang-btn"
+							class:selected={selectedLanguage === 'fi'}
+							onclick={() => applyLanguage('fi')}
+						>
+							Suomi
+						</button>
+					</div>
+				{/if}
 			</section>
 
 			<form method="POST" action="/auth/signout" class="logout-form">
@@ -183,6 +210,21 @@
 	<div class="page-content">
 		{@render children()}
 	</div>
+
+	<nav class="bottom-nav" aria-label="Primary">
+		<a href={dashboardHref} class="nav-item" class:active={dashboardActive}>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M3 13h8V3H3v10zm10 8h8V11h-8v10zm0-18v6h8V3h-8zM3 21h8v-6H3v6z" />
+			</svg>
+			<span>Dashboard</span>
+		</a>
+		<a href={workOrdersHref} class="nav-item" class:active={workOrdersActive}>
+			<svg viewBox="0 0 24 24" aria-hidden="true">
+				<path d="M19 3H5c-1.1 0-2 .9-2 2v14h2V5h14V3zm3 4H9c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h13c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm0 14H9V9h13v12zM11 11h9v2h-9zm0 4h9v2h-9zm0 4h6v2h-6z" />
+			</svg>
+			<span>Work Orders</span>
+		</a>
+	</nav>
 </div>
 
 <style>
@@ -223,8 +265,8 @@
 		position: sticky;
 		top: 0;
 		z-index: 50;
-		display: flex;
-		justify-content: space-between;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 		align-items: center;
 		gap: 1rem;
 		margin: 0 0 1.2rem;
@@ -235,9 +277,66 @@
 		box-shadow: var(--md3-shadow);
 	}
 
+	.center-logo {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		pointer-events: none;
+		justify-self: center;
+	}
+
+	.center-logo img {
+		height: 1.8rem;
+		width: auto;
+		object-fit: contain;
+	}
+
 	.page-content {
 		padding: 1rem;
+		padding-bottom: calc(5.6rem + env(safe-area-inset-bottom));
 		overflow-x: clip;
+	}
+
+	.bottom-nav {
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 70;
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.5rem;
+		padding: 0.55rem 0.85rem calc(0.55rem + env(safe-area-inset-bottom));
+		background: rgb(255 255 255 / 94%);
+		backdrop-filter: blur(10px);
+		border-top: 1px solid var(--md3-outline);
+		box-shadow: 0 -8px 22px rgb(8 25 54 / 10%);
+	}
+
+	.nav-item {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.45rem;
+		border-radius: 999px;
+		border: 1px solid transparent;
+		padding: 0.55rem 0.7rem;
+		color: var(--md3-text);
+		text-decoration: none;
+		font-weight: 800;
+		font-size: 0.88rem;
+	}
+
+	.nav-item svg {
+		width: 1.05rem;
+		height: 1.05rem;
+		fill: currentColor;
+	}
+
+	.nav-item.active {
+		background: #e8f0fe;
+		border-color: #b8cdf7;
+		color: #184ea6;
 	}
 
 	.brand-row {
@@ -245,30 +344,10 @@
 		align-items: center;
 		gap: 0.8rem;
 		min-width: 0;
+		justify-self: start;
+		max-width: 100%;
 	}
 
-	a {
-		color: inherit;
-		text-decoration: none;
-	}
-
-	.brand-copy {
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
-	}
-
-	.brand-copy strong {
-		font-family: 'Space Grotesk', 'Nunito', sans-serif;
-		font-size: 1rem;
-	}
-
-	.brand-copy p {
-		margin: 0;
-		font-size: 0.82rem;
-		font-weight: 700;
-		opacity: 0.8;
-	}
 
 	.icon-button {
 		display: inline-flex;
@@ -293,7 +372,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.55rem;
-		margin-left: auto;
+		justify-self: end;
 		border: 1px solid var(--md3-outline);
 		border-radius: 999px;
 		background: #fff;
@@ -390,6 +469,30 @@
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 0.45rem;
+		margin-top: 0.5rem;
+	}
+
+	.lang-trigger {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+		border: 1px solid var(--md3-outline);
+		border-radius: 0.8rem;
+		padding: 0.65rem 0.75rem;
+		background: #fff;
+		color: var(--md3-text);
+		font: inherit;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.chevron {
+		transition: transform 140ms ease;
+	}
+
+	.chevron.open {
+		transform: rotate(180deg);
 	}
 
 	.lang-btn {
@@ -397,6 +500,7 @@
 		border-radius: 0.8rem;
 		padding: 0.6rem 0.65rem;
 		background: #fff;
+		color: var(--md3-text);
 		font: inherit;
 		font-weight: 700;
 		text-align: center;
@@ -450,21 +554,14 @@
 		color: #184ea6;
 	}
 
-	button {
-		border: 0;
-		border-radius: 999px;
-		padding: 0.6rem 1rem;
-		background: var(--md3-primary);
-		color: var(--md3-on-primary);
-		font: inherit;
-		font-weight: 800;
-		cursor: pointer;
-	}
-
 	@media (max-width: 700px) {
 		.top-bar {
-			align-items: flex-start;
+			align-items: center;
 			top: 0;
+		}
+
+		.center-logo img {
+			height: 1.5rem;
 		}
 
 		.user-chip-text {
@@ -481,6 +578,10 @@
 
 		.lang-row {
 			grid-template-columns: 1fr;
+		}
+
+		.nav-item {
+			font-size: 0.82rem;
 		}
 	}
 
