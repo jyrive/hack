@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { isRedirect, redirect, type Handle } from '@sveltejs/kit';
 import WebSocket from 'ws';
 
-const PUBLIC_PATHS = new Set(['/auth/signin', '/auth/callback', '/auth/error', '/auth/debug', '/hello']);
+const PUBLIC_PATHS = new Set(['/auth/signin', '/auth/callback', '/auth/error', '/hello']);
 const PUBLIC_PREFIXES = ['/_app/', '/icons/'];
 const PUBLIC_FILES = new Set(['/robots.txt', '/site.webmanifest', '/service-worker.js', '/favicon.ico']);
 
@@ -118,8 +118,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 			throw error;
 		}
 
-		const rawErrorMessage = error instanceof Error ? error.message : String(error);
-		const safeDetail = encodeURIComponent(rawErrorMessage.slice(0, 180));
 		const isConfigError =
 			error instanceof Error && error.message.toLowerCase().includes('supabase config');
 		const reason = isConfigError ? 'config_missing' : `runtime_${stage}`;
@@ -138,13 +136,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 		});
 
 		if (event.url.pathname === '/auth/signin' || event.url.pathname === '/auth/callback') {
-			throw redirect(303, `/auth/error?reason=${reason}&detail=${safeDetail}`);
+			throw redirect(303, `/auth/error?reason=${reason}`);
 		}
 
 		if (isPublicPath(event.url.pathname) || event.url.pathname === '/auth/error') {
 			return resolve(event);
 		}
 
-		throw redirect(303, `/auth/error?reason=${reason}&detail=${safeDetail}`);
+		throw redirect(303, `/auth/error?reason=${reason}`);
 	}
 };
