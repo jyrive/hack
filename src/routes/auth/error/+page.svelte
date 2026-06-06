@@ -3,6 +3,7 @@
 
 	const reason = $derived(page.url.searchParams.get('reason'));
 	const isConfigIssue = $derived(reason === 'config_missing');
+	const detail = $derived(page.url.searchParams.get('detail'));
 </script>
 
 <main>
@@ -11,6 +12,9 @@
 		<p>Authentication is not configured in the server runtime environment.</p>
 	{:else}
 		<p>Please try again.</p>
+	{/if}
+	{#if detail}
+		<p class="detail">{detail}</p>
 	{/if}
 	<a href="/auth/signin" data-sveltekit-reload>Continue with Google</a>
 </main>
@@ -34,5 +38,14 @@
 		color: #fff;
 		text-decoration: none;
 		font-weight: 700;
+	}
+
+	.detail {
+		max-width: 48rem;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+			'Courier New', monospace;
+		font-size: 0.8rem;
+		opacity: 0.8;
+		word-break: break-word;
 	}
 </style>
