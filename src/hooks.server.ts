@@ -20,13 +20,21 @@ function isPublicPath(pathname: string): boolean {
 	return false;
 }
 
-export const handle: Handle = async ({ event, resolve }) => {
-	const supabaseUrl = env.VITE_SUPABASE_URL;
-	const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
+function getSupabaseConfig() {
+	const url = env.VITE_SUPABASE_URL;
+	const anonKey = env.VITE_SUPABASE_ANON_KEY;
 
-	if (!supabaseUrl || !supabaseAnonKey) {
-		throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be configured.');
+	if (!url || !anonKey) {
+		throw new Error(
+			'Supabase config missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in SWA app settings.'
+		);
 	}
+
+	return { url, anonKey };
+}
+
+export const handle: Handle = async ({ event, resolve }) => {
+	const { url: supabaseUrl, anonKey: supabaseAnonKey } = getSupabaseConfig();
 
 	event.locals.supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
 		cookies: {
@@ -44,6 +52,23 @@ export const handle: Handle = async ({ event, resolve }) => {
 			}
 		}
 	});
+
+	// Some provider setups land on /?code=... instead of /auth/callback; exchange here too.
+	const code = event.url.searchParams.get('code');
+	if (code && event.url.pathname !== '/auth/callback') {
+		try {
+			const { error } = await event.locals.supabase.auth.exchangeCodeForSession(code);
+			if (error) {
+				throw error;
+			}
+		} catch {
+			throw redirect(303, '/auth/error');
+		}
+
+		const requestedNext = event.url.searchParams.get('next') ?? '/';
+		const next = requestedNext.startsWith('/') ? requestedNext : '/';
+		throw redirect(303, next);
+	}
 
 	const {
 		data: { user }
