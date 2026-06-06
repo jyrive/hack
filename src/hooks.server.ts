@@ -35,56 +35,75 @@ function getSupabaseConfig() {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
-	const { url: supabaseUrl, anonKey: supabaseAnonKey } = getSupabaseConfig();
+	event.locals.user = null;
 
-	event.locals.supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-		cookies: {
-			getAll: () => event.cookies.getAll(),
-			setAll: (
-				cookiesToSet: {
-					name: string;
-					value: string;
-					options: Parameters<typeof event.cookies.set>[2];
-				}[]
-			) => {
-				for (const { name, value, options } of cookiesToSet) {
-					event.cookies.set(name, value, { ...options, path: '/' });
+	try {
+		const { url: supabaseUrl, anonKey: supabaseAnonKey } = getSupabaseConfig();
+
+		event.locals.supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+			cookies: {
+				getAll: () => event.cookies.getAll(),
+				setAll: (
+					cookiesToSet: {
+						name: string;
+						value: string;
+						options: Parameters<typeof event.cookies.set>[2];
+					}[]
+				) => {
+					for (const { name, value, options } of cookiesToSet) {
+						event.cookies.set(name, value, { ...options, path: '/' });
+					}
 				}
 			}
-		}
-	});
+		});
 
-	// Some provider setups land on /?code=... instead of /auth/callback; exchange here too.
-	const code = event.url.searchParams.get('code');
-	if (code && event.url.pathname !== '/auth/callback') {
-		try {
-			const { error } = await event.locals.supabase.auth.exchangeCodeForSession(code);
-			if (error) {
-				throw error;
+		// Some provider setups land on /?code=... instead of /auth/callback; exchange here too.
+		const code = event.url.searchParams.get('code');
+		if (code && event.url.pathname !== '/auth/callback') {
+			try {
+				const { error } = await event.locals.supabase.auth.exchangeCodeForSession(code);
+				if (error) {
+					throw error;
+				}
+			} catch {
+				throw redirect(303, '/auth/error');
 			}
-		} catch {
-			throw redirect(303, '/auth/error');
+
+			const requestedNext = event.url.searchParams.get('next') ?? '/';
+			const next = requestedNext.startsWith('/') ? requestedNext : '/';
+			throw redirect(303, next);
 		}
 
-		const requestedNext = event.url.searchParams.get('next') ?? '/';
-		const next = requestedNext.startsWith('/') ? requestedNext : '/';
-		throw redirect(303, next);
+		const {
+			data: { user }
+		} = await event.locals.supabase.auth.getUser();
+
+		event.locals.user = user;
+
+		if (!user && !isPublicPath(event.url.pathname)) {
+			const next = `${event.url.pathname}${event.url.search}`;
+			throw redirect(303, `/auth/signin?next=${encodeURIComponent(next)}`);
+		}
+
+		if (user && event.url.pathname === '/auth/signin') {
+			throw redirect(303, '/');
+		}
+
+		return resolve(event);
+	} catch (error) {
+		console.error('Auth hook failure', {
+			path: event.url.pathname,
+			hasViteUrl: Boolean(env.VITE_SUPABASE_URL),
+			hasViteAnonKey: Boolean(env.VITE_SUPABASE_ANON_KEY),
+			hasSupabaseUrl: Boolean(env.SUPABASE_URL),
+			hasSupabaseAnonKey: Boolean(env.SUPABASE_ANON_KEY),
+			error
+		});
+
+		if (isPublicPath(event.url.pathname) || event.url.pathname === '/auth/error') {
+			return resolve(event);
+		}
+
+		throw redirect(303, '/auth/error');
 	}
-
-	const {
-		data: { user }
-	} = await event.locals.supabase.auth.getUser();
-
-	event.locals.user = user;
-
-	if (!user && !isPublicPath(event.url.pathname)) {
-		const next = `${event.url.pathname}${event.url.search}`;
-		throw redirect(303, `/auth/signin?next=${encodeURIComponent(next)}`);
-	}
-
-	if (user && event.url.pathname === '/auth/signin') {
-		throw redirect(303, '/');
-	}
-
-	return resolve(event);
 };
