@@ -5,16 +5,6 @@
 </script>
 
 <main class="dashboard">
-	<section class="hero card">
-		<div>
-			<h1>Building Dashboard</h1>
-			<p>Live operations snapshot for open work orders and service pressure.</p>
-		</div>
-		{#if data.selectedBuilding}
-			<span class="filter-pill">Filtered: {data.selectedBuilding}</span>
-		{/if}
-	</section>
-
 	<section class="kpi-grid">
 		<article class="card kpi total">
 			<p>Open work orders</p>
@@ -76,33 +66,9 @@
 		box-shadow: 0 10px 26px rgb(27 66 125 / 10%);
 	}
 
-	.hero {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 0.8rem;
-	}
-
-	h1,
 	h2 {
 		margin: 0;
 		font-family: 'Space Grotesk', 'Nunito', sans-serif;
-	}
-
-	.hero p {
-		margin: 0.25rem 0 0;
-		font-weight: 700;
-	}
-
-	.filter-pill {
-		display: inline-flex;
-		align-items: center;
-		border-radius: 999px;
-		background: #e8f0fe;
-		color: #185abc;
-		padding: 0.35rem 0.75rem;
-		font-size: 0.82rem;
-		font-weight: 800;
 	}
 
 	.kpi-grid {
@@ -198,11 +164,6 @@
 
 		.card {
 			padding: 0.85rem;
-		}
-
-		.hero {
-			flex-direction: column;
-			align-items: flex-start;
 		}
 
 		.kpi-grid {

@@ -6,6 +6,7 @@
 
 	let { children, data }: { children: import('svelte').Snippet; data: LayoutData } = $props();
 	let buildingSheetOpen = $state(false);
+	let notificationSheetOpen = $state(false);
 	let accountSheetOpen = $state(false);
 	let selectedLanguage = $state<'en' | 'sv' | 'fi'>('en');
 	let languageMenuOpen = $state(false);
@@ -18,8 +19,28 @@
 	const dashboardHref = $derived(`/dashboard${navSearch}`);
 	const dashboardActive = $derived(activePath === '/dashboard');
 	const workOrdersActive = $derived(activePath === '/' || activePath.startsWith('/work-orders'));
+	const notificationSeedBuildings = $derived(
+		(data.selectedBuilding ? [data.selectedBuilding] : data.buildings).slice(0, 3)
+	);
+	const predictionNotifications = $derived(
+		notificationSeedBuildings.map((building, index) => {
+			const labels = ['Cleaning demand', 'HVAC fault risk', 'Service backlog'];
+			const windows = ['next 12h', 'next 24h', 'next 48h'];
+			const scores = [68, 74, 81];
+
+			return {
+				building,
+				title: `${labels[index % labels.length]} prediction`,
+				window: windows[index % windows.length],
+				score: scores[index % scores.length]
+			};
+		})
+	);
 
 	onMount(() => {
+		const onOpenBuildingSheet = () => openBuildingSheet();
+		window.addEventListener('open-building-sheet', onOpenBuildingSheet);
+
 		const params = new URLSearchParams(window.location.search);
 		const fromQuery = params.get('lang');
 		const fromStorage = localStorage.getItem('app_lang');
@@ -30,6 +51,10 @@
 		}
 
 		document.documentElement.lang = selectedLanguage;
+
+		return () => {
+			window.removeEventListener('open-building-sheet', onOpenBuildingSheet);
+		};
 	});
 
 	function applyBuilding(selected: string) {
@@ -56,18 +81,27 @@
 	}
 
 	function openBuildingSheet() {
+		notificationSheetOpen = false;
 		accountSheetOpen = false;
 		buildingSheetOpen = true;
 	}
 
+	function openNotificationSheet() {
+		buildingSheetOpen = false;
+		accountSheetOpen = false;
+		notificationSheetOpen = true;
+	}
+
 	function openAccountSheet() {
 		buildingSheetOpen = false;
+		notificationSheetOpen = false;
 		accountSheetOpen = true;
 		languageMenuOpen = false;
 	}
 
 	function closeSheets() {
 		buildingSheetOpen = false;
+		notificationSheetOpen = false;
 		accountSheetOpen = false;
 		languageMenuOpen = false;
 	}
@@ -99,12 +133,12 @@
 			<button
 				type="button"
 				class="icon-button"
-				onclick={openBuildingSheet}
-				aria-label="Select building"
+				onclick={openNotificationSheet}
+				aria-label="Open notifications"
 			>
 				<svg viewBox="0 0 24 24" aria-hidden="true">
 					<path
-						d="M3 21h18v-2H3v2zm2-4h4V3H5v14zm6 0h4V7h-4v10zm6 0h2V11h-2v6zM7 5h2v2H7V5zm0 4h2v2H7V9zm0 4h2v2H7v-2zm6-4h2v2h-2V9zm0 4h2v2h-2v-2z"
+						d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 1 0-14 0v5l-2 2v1h18v-1l-2-2z"
 					/>
 				</svg>
 			</button>
@@ -120,7 +154,7 @@
 		</button>
 	</header>
 
-	{#if buildingSheetOpen || accountSheetOpen}
+	{#if buildingSheetOpen || notificationSheetOpen || accountSheetOpen}
 		<button
 			type="button"
 			class="sheet-backdrop"
@@ -147,9 +181,34 @@
 						class:selected={data.selectedBuilding === building}
 						onclick={() => applyBuilding(building)}
 					>
-						{building}
+						<span class="sheet-item-title">{building}</span>
+						{#if data.buildingAddresses?.[building]}
+							<span class="sheet-item-subtitle">{data.buildingAddresses[building]}</span>
+						{/if}
 					</button>
 				{/each}
+			</div>
+		</div>
+	{/if}
+
+	{#if notificationSheetOpen}
+		<div class="notification-sheet" role="dialog" aria-modal="true" aria-label="Notifications">
+			<div class="sheet-handle"></div>
+			<h2>Prediction Alerts</h2>
+			<div class="sheet-list notification-list">
+				{#if predictionNotifications.length === 0}
+					<div class="notification-empty">No prediction alerts right now.</div>
+				{:else}
+					{#each predictionNotifications as item}
+						<article class="notification-item">
+							<p class="notification-title">{item.title}</p>
+							<p class="notification-building">{item.building}</p>
+							<p class="notification-detail">
+								Model predicts {item.score}% likelihood in {item.window} based on recent trend data.
+							</p>
+						</article>
+					{/each}
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -441,6 +500,20 @@
 		animation: sheet-in 180ms ease-out;
 	}
 
+	.notification-sheet {
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 100;
+		max-width: 100vw;
+		background: #fff;
+		border-radius: 1.25rem 1.25rem 0 0;
+		padding: 0.6rem 1rem 1rem;
+		box-shadow: 0 -12px 36px rgb(7 20 47 / 20%);
+		animation: sheet-in 180ms ease-out;
+	}
+
 	.sheet-handle {
 		width: 2.8rem;
 		height: 0.28rem;
@@ -537,6 +610,8 @@
 	}
 
 	.sheet-list button {
+		display: grid;
+		gap: 0.15rem;
 		border: 1px solid var(--md3-outline);
 		border-radius: 0.8rem;
 		padding: 0.7rem 0.85rem;
@@ -552,6 +627,55 @@
 		background: #e8f0fe;
 		border-color: #b8cdf7;
 		color: #184ea6;
+	}
+
+	.notification-list {
+		max-height: min(50dvh, 24rem);
+	}
+
+	.notification-item {
+		border: 1px solid var(--md3-outline);
+		border-radius: 0.8rem;
+		padding: 0.7rem 0.85rem;
+		background: #fff;
+	}
+
+	.notification-title {
+		margin: 0;
+		font-size: 0.88rem;
+		font-weight: 800;
+	}
+
+	.notification-building {
+		margin: 0.15rem 0 0;
+		font-size: 0.82rem;
+		font-weight: 800;
+		color: #185abc;
+	}
+
+	.notification-detail {
+		margin: 0.2rem 0 0;
+		font-size: 0.8rem;
+		font-weight: 700;
+		opacity: 0.78;
+	}
+
+	.notification-empty {
+		border: 1px dashed var(--md3-outline);
+		border-radius: 0.8rem;
+		padding: 0.8rem;
+		font-weight: 700;
+		opacity: 0.8;
+	}
+
+	.sheet-item-title {
+		font-weight: 800;
+	}
+
+	.sheet-item-subtitle {
+		font-size: 0.8rem;
+		opacity: 0.78;
+		font-weight: 700;
 	}
 
 	@media (max-width: 700px) {
@@ -573,6 +697,10 @@
 		}
 
 		.account-sheet {
+			padding-bottom: 1.25rem;
+		}
+
+		.notification-sheet {
 			padding-bottom: 1.25rem;
 		}
 
