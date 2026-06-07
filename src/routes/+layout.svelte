@@ -225,23 +225,6 @@
 		return 'New';
 	}
 
-	async function dismissAlert(alertId: string) {
-		if (alertActionBusyId) return;
-		alertActionBusyId = alertId;
-		try {
-			const response = await fetch(`/api/alerts/${alertId}/dismiss`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ note: 'Dismissed as no action needed' })
-			});
-			if (response.ok) {
-				await refreshAlerts();
-			}
-		} finally {
-			alertActionBusyId = null;
-		}
-	}
-
 	async function createWorkOrderFromAlert(alertId: string) {
 		if (alertActionBusyId) return;
 		alertActionBusyId = alertId;
@@ -410,17 +393,13 @@
 									<a class="notification-open-link" href={`/work-orders/${item.linkedWorkOrder.id}`}>
 										Open WO #{item.linkedWorkOrder.wo_no}
 									</a>
-								{:else if item.status !== 'dismissed'}
+									{/if}
 									<button type="button" class="notification-action-btn" onclick={() => createWorkOrderFromAlert(item.id)} disabled={alertActionBusyId === item.id}>
 										Create work order
 									</button>
-								{/if}
-
-								{#if item.status === 'new'}
-									<button type="button" class="notification-action-btn secondary" onclick={() => dismissAlert(item.id)} disabled={alertActionBusyId === item.id}>
+									<button type="button" class="notification-action-btn secondary">
 										Dismiss
 									</button>
-								{/if}
 							</div>
 						</article>
 					{/each}
