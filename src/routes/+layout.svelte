@@ -4,12 +4,29 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import type { LayoutData } from './$types';
 
+	type LayoutAlert = {
+		id: string;
+		building_name: string;
+		alert_type: string;
+		alert_title: string;
+		alert_window: string | null;
+		alert_score: number | null;
+		status: 'new' | 'dismissed' | 'actioned' | 'resolved';
+		reaction_note: string | null;
+		linked_work_order_id: string | null;
+		dismissed_at: string | null;
+		created_at: string;
+		linkedWorkOrder: { id: string; wo_no: string; is_open: boolean } | null;
+	};
+
 	let { children, data }: { children: import('svelte').Snippet; data: LayoutData } = $props();
 	let buildingSheetOpen = $state(false);
 	let notificationSheetOpen = $state(false);
 	let accountSheetOpen = $state(false);
 	let selectedLanguage = $state<'en' | 'sv' | 'fi'>('en');
 	let languageMenuOpen = $state(false);
+	let alerts = $state<LayoutAlert[]>([]);
+	let alertActionBusyId = $state<string | null>(null);
 	let mediaPermissionSheetOpen = $state(false);
 	let mediaPermissionBusy = $state(false);
 	let mediaPermissionMessage = $state('');
@@ -24,24 +41,16 @@
 	const dashboardHref = $derived(`/dashboard${navSearch}`);
 	const dashboardActive = $derived(activePath === '/dashboard');
 	const workOrdersActive = $derived(activePath === '/' || activePath.startsWith('/work-orders'));
-	const notificationSeedBuildings = $derived(
-		(data.selectedBuilding ? [data.selectedBuilding] : data.buildings).slice(0, 3)
+	const buildingFilteredAlerts = $derived(
+		data.selectedBuilding ? alerts.filter((item) => item.building_name === data.selectedBuilding) : alerts
 	);
-	const predictionNotifications = $derived(
-		notificationSeedBuildings.map((building, index) => {
-			const labels = ['Cleaning demand', 'HVAC fault risk', 'Service backlog'];
-			const windows = ['next 12h', 'next 24h', 'next 48h'];
-			const scores = [68, 74, 81];
-
-			return {
-				building,
-				title: `${labels[index % labels.length]} prediction`,
-				window: windows[index % windows.length],
-				score: scores[index % scores.length]
-			};
-		})
+	const notificationUsesFallback = $derived(
+		!!data.selectedBuilding && buildingFilteredAlerts.length === 0 && alerts.length > 0
 	);
-	const newNotificationCount = $derived(Math.min(predictionNotifications.length, 9));
+	const notificationAlerts = $derived(
+		(notificationUsesFallback ? alerts : buildingFilteredAlerts).slice(0, 100)
+	);
+	const newNotificationCount = $derived(Math.min(alerts.filter((item) => item.status === 'new').length, 9));
 
 	onMount(() => {
 		const onOpenBuildingSheet = () => openBuildingSheet();
@@ -57,6 +66,8 @@
 		}
 
 		document.documentElement.lang = selectedLanguage;
+
+		alerts = (data.alerts ?? []) as LayoutAlert[];
 
 		void refreshMediaPermissionState();
 
@@ -152,6 +163,7 @@
 		buildingSheetOpen = false;
 		accountSheetOpen = false;
 		notificationSheetOpen = true;
+		void refreshAlerts();
 	}
 
 	function openAccountSheet() {
@@ -176,6 +188,79 @@
 		if (lang === 'sv') return 'Svenska';
 		if (lang === 'fi') return 'Suomi';
 		return 'English';
+	}
+
+	async function refreshAlerts() {
+		try {
+			const response = await fetch('/api/alerts');
+			if (!response.ok) return;
+			const payload = (await response.json()) as { alerts?: LayoutAlert[] };
+			const loadedAlerts = payload.alerts ?? [];
+
+			if (loadedAlerts.length === 0) {
+				const seedResponse = await fetch('/api/alerts/seed', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ minimumCount: 3 })
+				});
+
+				if (seedResponse.ok) {
+					const seedPayload = (await seedResponse.json()) as { alerts?: LayoutAlert[] };
+					alerts = seedPayload.alerts ?? [];
+					return;
+				}
+			}
+
+			alerts = loadedAlerts;
+		} catch {
+			// Keep existing state if refresh fails.
+		}
+	}
+
+	function alertStatusLabel(alert: LayoutAlert): string {
+		if (alert.status === 'dismissed') return 'Dismissed';
+		if (alert.status === 'resolved') return 'Done';
+		if (alert.status === 'actioned' && alert.linkedWorkOrder?.is_open) return 'Work order created';
+		if (alert.status === 'actioned') return 'Work order done';
+		return 'New';
+	}
+
+	async function dismissAlert(alertId: string) {
+		if (alertActionBusyId) return;
+		alertActionBusyId = alertId;
+		try {
+			const response = await fetch(`/api/alerts/${alertId}/dismiss`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ note: 'Dismissed as no action needed' })
+			});
+			if (response.ok) {
+				await refreshAlerts();
+			}
+		} finally {
+			alertActionBusyId = null;
+		}
+	}
+
+	async function createWorkOrderFromAlert(alertId: string) {
+		if (alertActionBusyId) return;
+		alertActionBusyId = alertId;
+		try {
+			const response = await fetch(`/api/alerts/${alertId}/create-work-order`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({})
+			});
+			if (!response.ok) return;
+
+			const payload = (await response.json()) as { workOrder?: { id: string } };
+			await refreshAlerts();
+			if (payload.workOrder?.id) {
+				window.location.href = `/work-orders/${payload.workOrder.id}`;
+			}
+		} finally {
+			alertActionBusyId = null;
+		}
 	}
 </script>
 
@@ -298,17 +383,45 @@
 		<div class="notification-sheet" role="dialog" aria-modal="true" aria-label="Notifications">
 			<div class="sheet-handle"></div>
 			<h2>Prediction Alerts</h2>
+			{#if notificationUsesFallback}
+				<p class="notification-filter-note">No alerts for the selected building. Showing all buildings instead.</p>
+			{/if}
 			<div class="sheet-list notification-list">
-				{#if predictionNotifications.length === 0}
-					<div class="notification-empty">No prediction alerts right now.</div>
+				{#if notificationAlerts.length === 0}
+					<div class="notification-empty">
+						{data.user ? 'No prediction alerts right now.' : 'Sign in to load prediction alerts.'}
+					</div>
 				{:else}
-					{#each predictionNotifications as item}
+					{#each notificationAlerts as item}
 						<article class="notification-item">
-							<p class="notification-title">{item.title}</p>
-							<p class="notification-building">{item.building}</p>
+							<div class="notification-head">
+								<p class="notification-title">{item.alert_title}</p>
+								<span class="notification-status" class:resolved={item.status === 'resolved'}>{alertStatusLabel(item)}</span>
+							</div>
+							<p class="notification-building">{item.building_name}</p>
 							<p class="notification-detail">
-								Model predicts {item.score}% likelihood in {item.window} based on recent trend data.
+								Model predicts {item.alert_score ?? '-'}% likelihood in {item.alert_window ?? 'upcoming window'} based on recent trend data.
 							</p>
+							{#if item.reaction_note}
+								<p class="notification-reaction">{item.reaction_note}</p>
+							{/if}
+							<div class="notification-actions">
+								{#if item.linkedWorkOrder}
+									<a class="notification-open-link" href={`/work-orders/${item.linkedWorkOrder.id}`}>
+										Open WO #{item.linkedWorkOrder.wo_no}
+									</a>
+								{:else if item.status !== 'dismissed'}
+									<button type="button" class="notification-action-btn" onclick={() => createWorkOrderFromAlert(item.id)} disabled={alertActionBusyId === item.id}>
+										Create work order
+									</button>
+								{/if}
+
+								{#if item.status === 'new'}
+									<button type="button" class="notification-action-btn secondary" onclick={() => dismissAlert(item.id)} disabled={alertActionBusyId === item.id}>
+										Dismiss
+									</button>
+								{/if}
+							</div>
 						</article>
 					{/each}
 				{/if}
@@ -837,6 +950,13 @@
 		max-height: min(50dvh, 24rem);
 	}
 
+	.notification-filter-note {
+		margin: 0.45rem 0 0;
+		font-size: 0.78rem;
+		font-weight: 800;
+		color: #1f4d7c;
+	}
+
 	.notification-item {
 		border: 1px solid var(--md3-outline);
 		border-radius: 0.8rem;
@@ -844,10 +964,37 @@
 		background: #fff;
 	}
 
+	.notification-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.6rem;
+	}
+
 	.notification-title {
 		margin: 0;
 		font-size: 0.88rem;
 		font-weight: 800;
+	}
+
+	.notification-status {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 999px;
+		padding: 0.2rem 0.55rem;
+		font-size: 0.7rem;
+		font-weight: 800;
+		border: 1px solid #b8cdf7;
+		background: #e8f0fe;
+		color: #184ea6;
+		white-space: nowrap;
+	}
+
+	.notification-status.resolved {
+		border-color: #b8dfc1;
+		background: #e7f4ea;
+		color: #1d6a2f;
 	}
 
 	.notification-building {
@@ -862,6 +1009,51 @@
 		font-size: 0.8rem;
 		font-weight: 700;
 		opacity: 0.78;
+	}
+
+	.notification-reaction {
+		margin: 0.3rem 0 0;
+		font-size: 0.78rem;
+		font-weight: 800;
+		color: #3d5a82;
+	}
+
+	.notification-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin-top: 0.55rem;
+	}
+
+	.notification-action-btn,
+	.notification-open-link {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 999px;
+		padding: 0.35rem 0.65rem;
+		font-size: 0.74rem;
+		font-weight: 800;
+		text-decoration: none;
+	}
+
+	.notification-action-btn {
+		border: 1px solid #b8cdf7;
+		background: #e8f0fe;
+		color: #184ea6;
+		cursor: pointer;
+	}
+
+	.notification-action-btn.secondary {
+		border-color: var(--md3-outline);
+		background: #fff;
+		color: var(--md3-text);
+	}
+
+	.notification-open-link {
+		border: 1px solid #a9d0b4;
+		background: #e7f4ea;
+		color: #1d6a2f;
 	}
 
 	.notification-empty {

@@ -402,6 +402,7 @@
 			closingWorkOrder = false;
 		}
 	}
+
 </script>
 
 <main class="container">

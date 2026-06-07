@@ -1,8 +1,10 @@
 import type { LayoutServerLoad } from './$types';
+import { getAlertsWithLinkedWorkOrders, type AlertWithLinked } from '$lib/server/alerts';
 
 export const load: LayoutServerLoad = async ({ locals, url }) => {
 	let buildings: string[] = [];
 	let buildingAddresses: Record<string, string> = {};
+	let alerts: AlertWithLinked[] = [];
 
 	const { data, error } = await locals.supabase
 		.from('work_orders')
@@ -28,10 +30,19 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		buildings = [...names].sort();
 	}
 
+	if (locals.user) {
+		alerts = await getAlertsWithLinkedWorkOrders({
+			supabase: locals.supabase,
+			buildingCandidates: buildings,
+			seedIfEmpty: true
+		});
+	}
+
 	return {
 		user: locals.user,
 		buildings,
 		buildingAddresses,
-		selectedBuilding: url.searchParams.get('building') ?? ''
+		selectedBuilding: url.searchParams.get('building') ?? '',
+		alerts
 	};
 };
