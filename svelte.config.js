@@ -8,6 +8,7 @@ const config = {
 	},
 	kit: {
 		adapter: azure({
+			allowReservedSwaRoutes: true,
 			customStaticWebAppConfig: {
 				platform: {
 					apiRuntime: 'node:20'
